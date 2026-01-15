@@ -47,7 +47,6 @@
         .koan-text {
             opacity: 0;
             filter: blur(30px);
-            /* 사라짐의 미학: 본질로의 귀환을 위한 아주 느린 소멸 */
             transition: opacity 18s cubic-bezier(0.4, 0, 0.2, 1), filter 18s cubic-bezier(0.4, 0, 0.2, 1);
             text-align: center;
             line-height: 2.5;
@@ -83,8 +82,13 @@
     <div id="status-msg"></div>
 
     <script>
-        // 발급받으신 API 키를 아래에 정확히 입력해 주세요.
-        const apiKey = "AIzaSyAH7IORkjFopbzGuk6Vf7xN4JLBVyaZfw4"; 
+        /**
+         * 보안 경고 관련 안내:
+         * GitHub에 API 키를 포함하여 업로드하면 'Secret scanning alerts'가 발생합니다.
+         * 이는 키 도용을 방지하기 위한 보안 조치입니다. 
+         * 배포 후 페이지가 정상 작동하지 않는다면 구글에서 키를 차단한 것이니 새 키를 발급받으세요.
+         */
+        const apiKey = "AIzaSyA7gRepes-yGX5xapzNnAAs7oBxRdwe9Ds"; 
 
         const userLang = navigator.language || navigator.userLanguage;
         
@@ -107,7 +111,6 @@
             const today = new Date().toDateString();
             const stored = JSON.parse(localStorage.getItem('intuition_public_limit') || '{}');
             if (stored.date !== today) {
-                // 하루 1~5회 사이의 무작위 노출 (사유의 희소성 보존)
                 const limit = Math.floor(Math.random() * 5) + 1;
                 const newStatus = { date: today, count: 0, limit: limit };
                 localStorage.setItem('intuition_public_limit', JSON.stringify(newStatus));
@@ -141,7 +144,7 @@
                     
                     if (!response.ok) {
                         if (response.status === 403) {
-                            updateStatus("API 키 활성화를 확인해 주세요.");
+                            updateStatus("보안상의 이유로 API 키가 차단되었을 수 있습니다.");
                             throw new Error("Invalid API Key");
                         }
                         if (retries > 0) {
@@ -176,7 +179,6 @@
                 }
 
                 container.innerHTML = '';
-                // 침묵의 시간 (8~15초)
                 await delay(Math.random() * 7000 + 8000);
 
                 const text = await fetchKoan();
@@ -191,7 +193,6 @@
                     el.classList.add('visible');
                     incrementCount();
                     
-                    // 충분한 응시의 시간 (30~50초)
                     await delay(Math.random() * 20000 + 30000);
                     el.classList.remove('visible');
                     await delay(20000); 
