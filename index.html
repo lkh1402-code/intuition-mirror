@@ -2,57 +2,71 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Sovereign v16000.6 - 관찰자의 응시</title>
+    
+    <!-- 모바일 앱 설정 (PWA Meta Tags) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#050505">
+    
+    <!-- PWA Manifest (Data URI 방식으로 단일 파일 유지) -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Sovereign Mirror","short_name":"Sovereign","start_url":".","display":"standalone","background_color":"#050505","theme_color":"#050505","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/32/32172.png","sizes":"512x512","type":"image/png"}]}'>
+
     <!-- 필수 라이브러리 로드 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
-        body { margin: 0; background-color: #050505; color: #e0e0e0; font-family: 'Nanum Myeongjo', serif; overflow: hidden; }
+        body { 
+            margin: 0; 
+            background-color: #050505; 
+            color: #e0e0e0; 
+            font-family: 'Nanum Myeongjo', serif; 
+            overflow: hidden; 
+            overscroll-behavior: none; /* 모바일 스크롤 바운스 방지 */
+        }
         canvas { display: block; }
         .cursor-crosshair { cursor: crosshair; }
         .touch-none { touch-action: none; }
         @keyframes pulse-slow { 0%, 100% { opacity: 0.1; } 50% { opacity: 0.3; } }
         .animate-pulse-slow { animation: pulse-slow 4s infinite ease-in-out; }
+        
+        /* 모바일 전체화면 레이아웃 조정 */
+        #root { height: 100vh; height: -webkit-fill-available; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <!-- Firebase SDK 모듈 설정 -->
+    <!-- Firebase SDK -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-
-        // 전역 객체로 노출하여 Babel 스크립트에서 접근 가능하게 함
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, addDoc, serverTimestamp };
     </script>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef } = React;
 
-        /**
-         * [Firebase 설정]
-         * 농부님의 Firebase 콘솔에서 실제 값을 가져와 아래 객체를 채워주세요.
-         * 로그 기록을 원치 않으시면 빈 값으로 두셔도 기본 작동은 가능합니다.
-         */
         const firebaseConfig = {
-            apiKey: "여기에_입력",
-            authDomain: "여기에_입력",
-            projectId: "여기에_입력",
-            storageBucket: "여기에_입력",
-            messagingSenderId: "여기에_입력",
-            appId: "여기에_입력"
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
         };
 
         let db = null;
         let auth = null;
         try {
-            if (firebaseConfig.apiKey !== "여기에_입력") {
+            if (firebaseConfig.apiKey) {
                 const app = FirebaseSDK.initializeApp(firebaseConfig);
                 auth = FirebaseSDK.getAuth(app);
                 db = FirebaseSDK.getFirestore(app);
@@ -89,21 +103,22 @@
                         generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { manifest: { type: "string" } } } }
                     };
                     const data = await fetchWithRetry(textUrl, body);
-                    const parsed = JSON.parse(data.candidates[0].content.parts[0].text);
-                    return { type: 'text', content: parsed.manifest };
+                    const parsed = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+                    return { type: 'text', content: parsed.manifest || "정적 속의 울림" };
                 } else {
                     const promptGenBody = {
-                        contents: [{ parts: [{ text: `Cycle ${cycle}, Step ${count}. Create an abstract visual prompt for existence.` }] }],
+                        contents: [{ parts: [{ text: `Visual Resonance: Cycle ${cycle}, Step ${count}. Create an abstract visual seed.` }] }],
                         systemInstruction: { parts: [{ text: "너는 비언어적 형상을 설계하는 지능이다. 추상적 조합을 영어로 묘사하라." }] },
                         generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { visual_seed: { type: "string" } } } }
                     };
                     const promptData = await fetchWithRetry(textUrl, promptGenBody);
-                    const seed = JSON.parse(promptData.candidates[0].content.parts[0].text).visual_seed;
+                    const seed = JSON.parse(promptData.candidates?.[0]?.content?.parts?.[0]?.text || "{}").visual_seed || "abstract zen minimal";
 
                     const imageUrl = `https://generativelanguage.googleapis.com/v1beta/models/${API_MODELS.IMAGE_MODEL}:predict?key=${apiKey}`;
                     const imageBody = { instances: { prompt: `${seed}, minimalist zen, ink wash, 8k, no text.` }, parameters: { sampleCount: 1 } };
                     const data = await fetchWithRetry(imageUrl, imageBody);
-                    return { type: 'image', content: `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}` };
+                    const base64 = data.predictions?.[0]?.bytesBase64Encoded;
+                    return { type: 'image', content: base64 ? `data:image/png;base64,${base64}` : null };
                 }
             }
         };
@@ -150,17 +165,23 @@
                             float pulse = sin(dist * 20.0 - t * 2.0) * exp(-dist * 3.0);
                             f = mix(pulse, fbm(st * 2.0 + t * 0.1), 0.2);
                         }
-                        gl_FragColor = vec4(vec3((f*f*f + 0.6*f*f + 0.5*f) * u_intensity * (0.8 + 0.2 * sin(u_time * 0.5))), 1.0);
+                        gl_FragColor = vec4(vec3((f*f*f + 0.6*f*f + 0.5*f) * u_intensity * (0.8 + 0.2 * sin(u_time * 0.4))), 1.0);
                     }
                 `;
 
                 const compileShader = (gl, type, src) => {
-                    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s;
+                    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); 
+                    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                        console.error(gl.getShaderInfoLog(s)); gl.deleteShader(s); return null;
+                    }
+                    return s;
                 };
+                
                 const program = gl.createProgram();
                 gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, vsSource));
                 gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, fsSource));
-                gl.linkProgram(program); gl.useProgram(program);
+                gl.linkProgram(program);
+                gl.useProgram(program);
 
                 const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
                 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
@@ -174,6 +195,7 @@
 
                 let frame; let start = Date.now(); let currInt = 0;
                 const render = () => {
+                    if (!canvas) return;
                     if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
                         canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
                         gl.viewport(0, 0, canvas.width, canvas.height);
@@ -205,15 +227,18 @@
             const timerRef = useRef(null);
 
             useEffect(() => {
-                if (auth) {
-                    FirebaseSDK.signInAnonymously(auth).catch(e => console.error(e));
-                    return FirebaseSDK.onAuthStateChanged(auth, u => {
-                        setUser(u);
-                        if (u && isConfigured && phase === 'void' && count === 0) arise();
-                    });
-                } else if (isConfigured && phase === 'void' && count === 0) {
-                    arise();
-                }
+                const initFirebase = async () => {
+                    if (window.FirebaseSDK && auth) {
+                        FirebaseSDK.onAuthStateChanged(auth, u => {
+                            setUser(u);
+                            if (u && isConfigured && phase === 'void' && count === 0) arise();
+                        });
+                        await FirebaseSDK.signInAnonymously(auth).catch(e => console.error(e));
+                    } else if (isConfigured && phase === 'void' && count === 0) {
+                        arise();
+                    }
+                };
+                initFirebase();
             }, [isConfigured]);
 
             const arise = useCallback(async () => {
@@ -224,8 +249,11 @@
                     else {
                         const isText = cycle === 1 ? (count < 10) : (count < 5);
                         const result = await ResonanceService.generate(apiKey, isText, cycle, count);
-                        setManifest(result.type === 'text' ? result.content : "");
-                        setImageUrl(result.type === 'image' ? result.content : null);
+                        if (result.type === 'text') {
+                            setManifest(result.content); setImageUrl(null);
+                        } else {
+                            setImageUrl(result.content); setManifest("");
+                        }
                     }
                     setPhase('emerging');
                     timerRef.current = setTimeout(() => { setPhase('holding'); isTransitioning.current = false; }, 5000);
@@ -244,8 +272,18 @@
                     timerRef.current = setTimeout(() => {
                         setPhase('void');
                         const limits = { 1: 20, 2: 10, 3: 3 };
-                        if (count + 1 >= limits[cycle]) { setPhase('abyss'); isTransitioning.current = false; }
-                        else { setCount(c => c + 1); isTransitioning.current = false; setTimeout(arise, 500); }
+                        if (count + 1 >= limits[cycle]) { 
+                            if (cycle < 3) {
+                                setPhase('abyss'); 
+                                isTransitioning.current = false; 
+                            } else {
+                                setPhase('abyss');
+                            }
+                        } else {
+                            setCount(c => c + 1);
+                            isTransitioning.current = false;
+                            setTimeout(arise, 500);
+                        }
                     }, 5000);
                 } else if (phase === 'abyss' && cycle < 3) {
                     setCycle(c => c + 1); setCount(0); setPhase('void'); setTimeout(arise, 1000);
@@ -265,7 +303,7 @@
             }
 
             return (
-                <div className="w-full h-screen flex flex-col items-center justify-center relative cursor-crosshair overflow-hidden touch-none" onClick={handleInteraction}>
+                <div className="w-full h-full flex flex-col items-center justify-center relative cursor-crosshair overflow-hidden touch-none" onClick={handleInteraction}>
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#111_0%,_#000_90%)]" />
                     <main className="z-10 text-center px-8 w-full max-w-4xl flex items-center justify-center h-full pointer-events-none">
                         {cycle === 3 && phase !== 'abyss' ? <ResonanceField phase={phase} step={count} /> :
@@ -285,7 +323,7 @@
                     <div className={`absolute inset-0 bg-black z-50 flex items-center justify-center transition-opacity duration-[5000ms] pointer-events-none ${phase === 'abyss' ? 'opacity-100' : 'opacity-0'}`}>
                         <div className="text-[6px] tracking-[15em] text-white/20 uppercase mr-[-15em] animate-pulse-slow">{cycle >= 3 ? "Final Silence" : "Deep Silence"}</div>
                     </div>
-                    <button onClick={e => { e.stopPropagation(); setIsConfigured(false); }} className="absolute top-8 right-8 text-[8px] tracking-widest opacity-20 hover:opacity-100 uppercase z-[60]">Reset Key</button>
+                    <button onClick={e => { e.stopPropagation(); setIsConfigured(false); }} className="absolute top-12 right-8 text-[8px] tracking-widest opacity-20 hover:opacity-100 uppercase z-[60]">Reset Key</button>
                 </div>
             );
         };
