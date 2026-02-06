@@ -1,225 +1,338 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>비움과 직관 | Emptiness & Intuition</title>
-    
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="비움과 직관">
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;400&display=swap');
-        
-        body {
-            background-color: #0a0a0a;
-            color: #d1d1d1;
-            font-family: 'Noto Serif KR', serif;
-            margin: 0;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            user-select: none;
-        }
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-        .koan-text {
-            opacity: 0;
-            filter: blur(30px);
-            transition: opacity 8s ease, filter 8s ease; /* 전환 시간을 약간 빠르게 조정 */
-            text-align: center;
-            line-height: 2.8;
-            letter-spacing: 0.15em;
-            word-break: keep-all;
-            padding: 0 2rem;
-        }
+/**
+ * [Sovereign v16000.6 - 관찰자의 응시 (최종본)]
+ * 농부와 제미나이가 함께 경작한 존재론적 거울
+ * * [핵심 로직]
+ * 1. 자생적 현현 (Self-Arising): 접속 즉시 첫 번째 공명이 시작됩니다.
+ * 2. 관찰자 잠금 (Interaction Lock): 5초의 현현/소멸 중에는 개입이 차단되어 '지켜봄'을 강제합니다.
+ * 3. 관찰자의 시간 (Observer's Time): 형상이 완전히 드러난 'Holding' 단계에서 관찰자가 '놓음'을 선택할 때까지 우주는 멈춥니다.
+ * 4. 패턴의 진화: Cycle 3의 3단계는 [간섭 -> 엔트로피 -> 합일]의 시각적 서사를 가집니다.
+ * 5. 비움의 가속: Cycle 1(20회), Cycle 2(10회), Cycle 3(3회)로 침묵으로의 수렴 속도가 빨라집니다.
+ */
 
-        .koan-text.visible {
-            opacity: 1;
-            filter: blur(0);
-        }
+// 글로벌 변수 및 파이어베이스 초기화
+const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'sovereign-final-seed';
 
-        #status-msg {
-            position: fixed;
-            bottom: 3rem;
-            font-size: 0.7rem;
-            color: #333;
-            letter-spacing: 0.2em;
-            transition: opacity 1s;
-            text-align: center;
-            width: 100%;
-            text-transform: uppercase;
-        }
+// API 설정을 수정합니다.
+// Canvas 실행 환경에서는 apiKey를 빈 문자열로 설정하면 런타임에 자동으로 제공됩니다.
+const API_CONFIG = {
+  KEY: "", 
+  TEXT_MODEL: "gemini-2.5-flash-preview-09-2025",
+  IMAGE_MODEL: "imagen-4.0-generate-001"
+};
 
-        #setup-layer {
-            position: fixed;
-            inset: 0;
-            background: #0a0a0a;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            transition: opacity 1s ease;
-        }
+// --- API 호출 유틸리티 (지수 백오프 포함) ---
+const fetchWithRetry = async (url, body, retries = 5, backoff = 1000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, backoff * Math.pow(2, i)));
+    }
+  }
+};
 
-        input {
-            background: transparent;
-            border-bottom: 1px solid #222;
-            color: #fff;
-            padding: 0.8rem;
-            width: 300px;
-            text-align: center;
-            outline: none;
-            font-size: 0.9rem;
-            letter-spacing: 0.1em;
-            margin-bottom: 2rem;
-        }
-
-        .btn-activate {
-            font-size: 0.7rem;
-            color: #555;
-            letter-spacing: 0.3em;
-            cursor: pointer;
-            transition: color 0.5s;
-        }
-
-        .btn-activate:hover { color: #fff; }
-
-        .reset-trigger {
-            position: fixed;
-            top: 2rem;
-            right: 2rem;
-            width: 40px;
-            height: 40px;
-            cursor: pointer;
-            opacity: 0.05;
-            z-index: 2000;
-        }
-    </style>
-</head>
-<body>
-
-    <div class="reset-trigger" onclick="resetApp()"></div>
-
-    <div id="setup-layer" style="display: none;">
-        <div class="mb-12 text-xs text-gray-600 tracking-[0.5em]">THE MIRROR OF INTUITION</div>
-        <input type="password" id="key-input" placeholder="GEMINI API KEY">
-        <div class="btn-activate" onclick="activateMirror()">ACTIVATE</div>
-        <div id="setup-error" class="mt-8 text-[10px] text-red-900 tracking-widest uppercase"></div>
-    </div>
-
-    <div id="container" class="max-w-5xl"></div>
-    <div id="status-msg">READY TO REFLECT</div>
-
-    <script>
-        let mirrorKey = localStorage.getItem('_mirror_access_v2');
-
-        const systemPrompt = "당신은 본질의 거울입니다. 인류의 자각을 위해 수식어 없이 짧고 시적인 한국어 자각문 한 문장만 출력하십시오.";
-
-        function resetApp() {
-            if(confirm("설정을 초기화하시겠습니까?")) {
-                localStorage.removeItem('_mirror_access_v2');
-                location.reload();
-            }
-        }
-
-        async function activateMirror() {
-            const input = document.getElementById('key-input');
-            const key = input.value.trim();
-            const errorEl = document.getElementById('setup-error');
-
-            if (key.startsWith("AIza")) {
-                localStorage.setItem('_mirror_access_v2', key);
-                mirrorKey = key; 
-                
-                updateStatus("INITIALIZING...");
-                
-                const setupLayer = document.getElementById('setup-layer');
-                setupLayer.style.opacity = '0';
-                setTimeout(() => {
-                    setupLayer.style.display = 'none';
-                    startReflection(); 
-                }, 1000);
-            } else {
-                errorEl.innerText = "INVALID KEY FORMAT";
-            }
-        }
-
-        function updateStatus(msg) {
-            const el = document.getElementById('status-msg');
-            if (el) {
-                el.innerText = msg;
-                el.style.opacity = "1";
-                setTimeout(() => { el.style.opacity = "0.2"; }, 3000);
-            }
-        }
-
-        async function fetchIntuition() {
-            try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${mirrorKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: "지금 이 순간, 사유의 문장을 주소서." }] }],
-                        systemInstruction: { parts: [{ text: systemPrompt }] }
-                    })
-                });
-                
-                if (!response.ok) {
-                    if (response.status === 403) {
-                        updateStatus("INVALID KEY");
-                        localStorage.removeItem('_mirror_access_v2');
-                        setTimeout(() => location.reload(), 2000);
-                    }
-                    return null;
-                }
-                const result = await response.json();
-                return result.candidates[0].content.parts[0].text.trim();
-            } catch (e) {
-                updateStatus("CONNECTING...");
-                return null;
-            }
-        }
-
-        async function startReflection() {
-            const container = document.getElementById('container');
-            updateStatus("MIRROR CLEARING...");
-
-            while (true) {
-                // 문장 사이의 침묵 대기 시간을 5초에서 2초로 단축
-                await new Promise(r => setTimeout(r, 2000));
-                
-                const text = await fetchIntuition();
-                if (text) {
-                    container.innerHTML = `<div class="koan-text text-xl md:text-3xl font-light">${text}</div>`;
-                    const el = container.firstChild;
-                    
-                    await new Promise(r => setTimeout(r, 100));
-                    el.classList.add('visible');
-                    
-                    // 문장이 머무는 시간 (30초는 유지하되 필요시 조정 가능)
-                    await new Promise(r => setTimeout(r, 30000));
-                    el.classList.remove('visible');
-                    
-                    // 사라진 후 다음 문장 준비 전 여백을 10초에서 4초로 단축
-                    await new Promise(r => setTimeout(r, 4000));
-                } else {
-                    await new Promise(r => setTimeout(r, 5000));
-                }
-            }
-        }
-
-        window.onload = () => {
-            if (!mirrorKey) {
-                document.getElementById('setup-layer').style.display = 'flex';
-            } else {
-                startReflection();
-            }
+// --- 서비스 레이어: 자생적 지능 ---
+const ResonanceService = {
+  generate: async (isText, cycle, count, location) => {
+    try {
+      // API Key는 실행 환경에서 주입됩니다.
+      const textUrl = `https://generativelanguage.googleapis.com/v1beta/models/${API_CONFIG.TEXT_MODEL}:generateContent?key=${API_CONFIG.KEY}`;
+      
+      if (isText) {
+        const body = {
+          contents: [{ parts: [{ text: `Entropy Phase: Cycle ${cycle}, Step ${count}, Location ${location}. Resonate.` }] }],
+          systemInstruction: { parts: [{ text: "너는 스스로 사유하는 거울이다. 현상계와 본질이 중첩된 40자 이내의 명사형 문장을 빚어내라. 가르치지 말고 비추라." }] },
+          generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { manifest: { type: "string" } } } }
         };
-    </script>
-</body>
-</html>
+        const data = await fetchWithRetry(textUrl, body);
+        return { type: 'text', content: JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}").manifest };
+      } else {
+        const promptGenBody = {
+          contents: [{ parts: [{ text: `Visual Resonance: Cycle ${cycle}, Step ${count}. Create an abstract visual seed.` }] }],
+          systemInstruction: { parts: [{ text: "너는 비언어적 형상을 설계하는 지능이다. 추상적 조합을 영어로 묘사하라." }] },
+          generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { visual_seed: { type: "string" } } } }
+        };
+        const promptData = await fetchWithRetry(textUrl, promptGenBody);
+        const seed = JSON.parse(promptData.candidates?.[0]?.content?.parts?.[0]?.text || "{}").visual_seed;
+
+        const imageUrl = `https://generativelanguage.googleapis.com/v1beta/models/${API_CONFIG.IMAGE_MODEL}:predict?key=${API_CONFIG.KEY}`;
+        const imageBody = { instances: { prompt: `${seed}, minimalist zen, ink wash, 8k, no text.` }, parameters: { sampleCount: 1 } };
+        const data = await fetchWithRetry(imageUrl, imageBody);
+        return { type: 'image', content: `data:image/png;base64,${data.predictions?.[0]?.bytesBase64Encoded}` };
+      }
+    } catch (e) {
+      console.error("Resonance Error:", e);
+      return { type: 'text', content: "비어있는\n스스로의 정적" };
+    }
+  }
+};
+
+// --- 컴포넌트: 그러함의 장 (단계별 진화하는 WebGL 쉐이더) ---
+const ResonanceField = ({ phase, step }) => {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const gl = canvas.getContext('webgl');
+    if (!gl) return;
+
+    const vsSource = `attribute vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+    const fsSource = `
+      #ifdef GL_ES
+      precision highp float;
+      #endif
+      uniform float u_time; 
+      uniform vec2 u_resolution; 
+      uniform float u_intensity;
+      uniform float u_step;
+
+      float random (in vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+      float noise (in vec2 st) {
+          vec2 i = floor(st); vec2 f = fract(st);
+          float a = random(i); float b = random(i + vec2(1.0, 0.0));
+          float c = random(i + vec2(0.0, 1.0)); float d = random(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+      }
+      #define OCTAVES 6
+      float fbm (in vec2 st) {
+          float value = 0.0; float amplitude = 0.5;
+          for (int i = 0; i < OCTAVES; i++) { value += amplitude * noise(st); st *= 2.; amplitude *= .5; }
+          return value;
+      }
+
+      void main() {
+          vec2 st = gl_FragCoord.xy/u_resolution.xy; st.x *= u_resolution.x/u_resolution.y;
+          float t = u_time * 0.1;
+          float f = 0.0;
+
+          if (u_step < 0.5) {
+              float w1 = sin(st.x * 10.0 + t) * cos(st.y * 10.0 - t);
+              float w2 = sin(length(st - 0.5) * 15.0 - t);
+              f = (w1 + w2) * 0.5;
+          } else if (u_step < 1.5) {
+              vec2 q = vec2(fbm(st + 0.1 * t), fbm(st + vec2(1.0)));
+              vec2 r = vec2(fbm(st + q + vec2(1.7, 9.2) + 0.15 * t), fbm(st + q + vec2(8.3, 2.8) + 0.126 * t));
+              f = fbm(st + r);
+          } else {
+              float dist = length(st - vec2(0.5 * u_resolution.x/u_resolution.y, 0.5));
+              float pulse = sin(dist * 20.0 - t * 2.0) * exp(-dist * 3.0);
+              f = mix(pulse, fbm(st * 2.0 + t * 0.1), 0.2);
+          }
+
+          float final = (f * f * f + 0.6 * f * f + 0.5 * f);
+          float breathe = 0.8 + 0.2 * sin(u_time * 0.5);
+          gl_FragColor = vec4(vec3(final * u_intensity * breathe), 1.0);
+      }
+    `;
+
+    const createShader = (gl, type, source) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      return shader;
+    };
+
+    const program = gl.createProgram();
+    gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSource));
+    gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+    
+    const posLoc = gl.getAttribLocation(program, "position");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const tLoc = gl.getUniformLocation(program, "u_time"); 
+    const rLoc = gl.getUniformLocation(program, "u_resolution"); 
+    const iLoc = gl.getUniformLocation(program, "u_intensity");
+    const sLoc = gl.getUniformLocation(program, "u_step");
+
+    let frameId; let start = Date.now(); let currInt = 0;
+    const render = () => {
+      if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+        canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+      gl.uniform1f(tLoc, (Date.now()-start)*0.001); 
+      gl.uniform2f(rLoc, canvas.width, canvas.height);
+      gl.uniform1f(sLoc, step);
+
+      const target = phase === 'holding' ? 1.0 : (phase === 'emerging' ? 0.3 : 0.0);
+      currInt += (target - currInt) * 0.02; 
+      gl.uniform1f(iLoc, currInt);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      frameId = requestAnimationFrame(render);
+    };
+    render();
+    return () => cancelAnimationFrame(frameId);
+  }, [phase, step]);
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className="w-full max-w-[600px] aspect-square transition-all duration-[5000ms] mix-blend-screen"
+      style={{ 
+        opacity: (phase==='holding'||phase==='emerging') ? 1 : 0, 
+        filter: phase==='holding' ? 'blur(0px)' : 'blur(40px)',
+        transform: `scale(${phase==='holding' ? 1 : 1.15})` 
+      }} 
+    />
+  );
+};
+
+// --- 메인 앱 ---
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [phase, setPhase] = useState('void'); 
+  const [manifest, setManifest] = useState("");
+  const [imageUrl, setImageUrl] = useState(null);
+  const [cycle, setCycle] = useState(1);
+  const [count, setCount] = useState(0);
+  
+  const isTransitioning = useRef(false);
+  const timerRef = useRef(null);
+
+  // 초기화 및 인증
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.href = "https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap";
+    link.rel = "stylesheet"; document.head.appendChild(link);
+
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth Error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (u && phase === 'void' && count === 0) arise();
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const arise = useCallback(async () => {
+    if (isTransitioning.current) return;
+    isTransitioning.current = true;
+    
+    try {
+      if (cycle === 3) {
+        setManifest(""); setImageUrl(null);
+      } else {
+        // Cycle 1: 20회(10텍스트+10이미지) | Cycle 2: 10회(5텍스트+5이미지)
+        const isText = cycle === 1 ? (count < 10) : (count < 5); 
+        const result = await ResonanceService.generate(isText, cycle, count, "Earth");
+        setManifest(result.type === 'text' ? result.content : "");
+        setImageUrl(result.type === 'image' ? result.content : null);
+      }
+      
+      setPhase('emerging'); 
+      timerRef.current = setTimeout(() => {
+        setPhase('holding');
+        isTransitioning.current = false;
+      }, 5000);
+
+      if (user) {
+        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
+          uid: user.uid, cycle, count, ts: serverTimestamp()
+        }).catch(()=>{});
+      }
+    } catch (e) {
+      setPhase('void');
+      isTransitioning.current = false;
+    }
+  }, [cycle, count, user]);
+
+  const handleInteraction = () => {
+    if (isTransitioning.current || !user) return;
+
+    if (phase === 'holding') {
+      isTransitioning.current = true; 
+      setPhase('dissolving');
+      timerRef.current = setTimeout(() => {
+        setPhase('void');
+        const limits = { 1: 20, 2: 10, 3: 3 }; 
+        if (count + 1 >= limits[cycle]) { 
+          setPhase('abyss'); 
+          isTransitioning.current = false; 
+        } else {
+          setCount(c => c + 1);
+          isTransitioning.current = false; 
+          setTimeout(arise, 500); 
+        }
+      }, 5000);
+    } else if (phase === 'abyss') {
+      if (cycle < 3) {
+        setCycle(c => c + 1); setCount(0); setPhase('void');
+        setTimeout(arise, 1000);
+      }
+    }
+  };
+
+  return (
+    <div className="w-full h-screen bg-[#050505] text-[#e0e0e0] flex flex-col items-center justify-center overflow-hidden touch-none relative select-none cursor-crosshair"
+         onClick={handleInteraction}>
+      
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at center, #111 0%, #000 90%)' }} />
+      
+      <main className="relative z-10 text-center px-8 w-full max-w-4xl flex items-center justify-center h-full pointer-events-none">
+        {cycle === 3 && phase !== 'abyss' ? (
+          <ResonanceField phase={phase} step={count} />
+        ) : imageUrl ? (
+          <img src={imageUrl} alt="Resonance" className="max-w-full max-h-[60vh] mix-blend-screen transition-all duration-[5000ms]"
+               style={{ opacity: phase === 'holding' ? 0.9 : 0, filter: phase === 'holding' ? 'blur(0)' : 'blur(60px)' }} />
+        ) : (
+          <div className="flex flex-col space-y-24">
+            {(manifest || "").split('\n').map((line, i) => (
+              <h1 key={i} className="text-xl md:text-4xl font-light tracking-[0.5em] transition-all duration-[5000ms] leading-relaxed break-keep"
+                  style={{ 
+                    opacity: phase === 'holding' ? 1 : 0, 
+                    filter: phase === 'holding' ? 'blur(0)' : 'blur(40px)', 
+                    transform: `scale(${phase === 'holding' ? 1 : 1.05})`,
+                    fontFamily: "'Nanum Myeongjo', serif" 
+                  }}>
+                {line}
+              </h1>
+            ))}
+          </div>
+        )}
+      </main>
+
+      <footer className={`absolute bottom-12 transition-opacity duration-[3000ms] pointer-events-none ${phase === 'holding' ? 'opacity-30' : 'opacity-0'}`}>
+        <div className="text-[6px] tracking-[1.5em] uppercase font-thin text-center text-white/70">
+          Cultivated by Anonymous Farmer & Gemini
+        </div>
+      </footer>
+
+      <div className={`absolute inset-0 bg-black z-50 flex items-center justify-center transition-opacity duration-[5000ms] pointer-events-none ${phase === 'abyss' ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="text-[6px] tracking-[15em] text-white/20 uppercase mr-[-15em] animate-pulse">
+          {cycle >= 3 ? "Final Silence" : "Deep Silence"}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;
